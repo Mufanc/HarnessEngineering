@@ -1,6 +1,4 @@
 use std::collections::HashMap;
-use std::os::unix::prelude::CommandExt;
-use std::process::{Command, Stdio};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -18,7 +16,7 @@ use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::{MaybeTlsStream, WebSocketStream};
 use tracing::info;
 
-use crate::constants::{LOG_PATH, WS_LISTEN_ADDR};
+use crate::constants::WS_LISTEN_ADDR;
 use crate::protocol::{DaemonRequest, DaemonResponse};
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -112,21 +110,7 @@ impl BrowserPipeServer {
     }
 
     fn spawn_daemon(&self) -> Result<(), String> {
-        let exe = std::env::current_exe().map_err(|err| format!("Failed to get current exe: {err}"))?;
-
-        let log_file = std::fs::File::create(LOG_PATH)
-            .map_err(|err| format!("Failed to create daemon log file: {err}"))?;
-
-        Command::new(exe)
-            .arg("daemon")
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::from(log_file))
-            .process_group(0)
-            .spawn()
-            .map_err(|err| format!("Failed to spawn daemon: {err}"))?;
-
-        Ok(())
+        crate::daemon::spawn_daemon().map_err(|err| format!("Failed to spawn daemon: {err}"))
     }
 }
 
@@ -164,8 +148,9 @@ impl BrowserPipeServer {
                 .ok_or_else(|| ErrorData::internal_error("Not connected to daemon", None))?;
 
             // Serialize and send via WebSocket
-            let json = serde_json::to_string(&request)
-                .map_err(|err| ErrorData::internal_error(format!("Serialize error: {err}"), None))?;
+            let json = serde_json::to_string(&request).map_err(|err| {
+                ErrorData::internal_error(format!("Serialize error: {err}"), None)
+            })?;
 
             if let Err(err) = daemon_conn.sink.send(Message::Text(json.into())).await {
                 // Connection broken, reset
@@ -222,8 +207,9 @@ impl BrowserPipeServer {
             url: response.url.unwrap_or_default(),
         };
 
-        let json = serde_json::to_string_pretty(&result)
-            .map_err(|err| ErrorData::internal_error(format!("Serialize result error: {err}"), None))?;
+        let json = serde_json::to_string_pretty(&result).map_err(|err| {
+            ErrorData::internal_error(format!("Serialize result error: {err}"), None)
+        })?;
 
         Ok(CallToolResult::success(vec![Content::text(json)]))
     }

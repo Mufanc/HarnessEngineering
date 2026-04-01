@@ -25,6 +25,8 @@ struct Cli {
 enum Commands {
     /// Run the daemon (bridge between Chrome extension and MCP clients)
     Daemon,
+    /// Ensure the daemon is running (start it if not, no-op if already running)
+    EnsureDaemon,
     /// Stop the running daemon gracefully
     StopDaemon,
 }
@@ -45,6 +47,7 @@ async fn main() -> Result<()> {
 
             daemon::run_daemon().await
         }
+        Some(Commands::EnsureDaemon) => daemon::ensure_daemon().await,
         Some(Commands::StopDaemon) => daemon::stop_daemon().await,
         None => {
             // MCP stdio server mode — logging MUST go to stderr

@@ -1,9 +1,14 @@
-use std::collections::HashMap;
-use std::io::ErrorKind;
-use std::sync::Arc;
-
+use anyhow::bail;
 use futures_util::stream::SplitSink;
 use futures_util::{SinkExt, StreamExt};
+use std::collections::HashMap;
+use std::env;
+use std::fs::File;
+use std::io::ErrorKind;
+use std::os::unix::prelude::CommandExt;
+use std::process::{Command, Stdio};
+use std::sync::Arc;
+use std::time::Duration;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::signal;
 use tokio::sync::{Mutex, Notify, oneshot};
@@ -11,7 +16,7 @@ use tokio_tungstenite::WebSocketStream;
 use tokio_tungstenite::tungstenite::Message;
 use tracing::{error, info, warn};
 
-use crate::constants::{CHROME_CONNECT_TIMEOUT, REQUEST_TIMEOUT, WS_LISTEN_ADDR};
+use crate::constants::{CHROME_CONNECT_TIMEOUT, LOG_PATH, REQUEST_TIMEOUT, WS_LISTEN_ADDR};
 use crate::protocol::{ChromeMessage, ChromeRequest, DaemonRequest, DaemonResponse};
 
 type PendingMap = HashMap<String, oneshot::Sender<DaemonResponse>>;
@@ -75,6 +80,47 @@ impl DaemonState {
     }
 }
 
+pub fn spawn_daemon() -> anyhow::Result<()> {
+    let exe = env::current_exe()?;
+    let log_file = File::create(LOG_PATH)?;
+
+    Command::new(exe)
+        .arg("daemon")
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::from(log_file))
+        .process_group(0)
+        .spawn()?;
+
+    Ok(())
+}
+
+pub async fn ensure_daemon() -> anyhow::Result<()> {
+    let url = format!("ws://{WS_LISTEN_ADDR}/mcp");
+
+    // Check if daemon is already running
+    if let Ok((mut ws, _)) = tokio_tungstenite::connect_async(&url).await {
+        let _ = ws.close(None).await;
+        println!("Daemon is already running");
+        return Ok(());
+    }
+
+    // Daemon not running, spawn it
+    spawn_daemon()?;
+
+    // Wait briefly to confirm it started
+    for _ in 0..30 {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        if let Ok((mut ws, _)) = tokio_tungstenite::connect_async(&url).await {
+            let _ = ws.close(None).await;
+            println!("Daemon started");
+            return Ok(());
+        }
+    }
+
+    bail!("Failed to confirm daemon started after 3 seconds")
+}
+
 pub async fn stop_daemon() -> anyhow::Result<()> {
     let url = format!("ws://{WS_LISTEN_ADDR}/shutdown");
 
@@ -96,7 +142,7 @@ pub async fn run_daemon() -> anyhow::Result<()> {
     let tcp_listener = match TcpListener::bind(WS_LISTEN_ADDR).await {
         Ok(listener) => listener,
         Err(err) if err.kind() == ErrorKind::AddrInUse => {
-            anyhow::bail!("Another daemon is already running at {}", WS_LISTEN_ADDR);
+            bail!("Another daemon is already running at {}", WS_LISTEN_ADDR);
         }
         Err(err) => return Err(err.into()),
     };
