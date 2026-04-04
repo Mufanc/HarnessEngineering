@@ -5,7 +5,7 @@ mod protocol;
 
 use crate::mcp::BrowserPipeServer;
 use anyhow::Result;
-use clap::{Parser, Subcommand};
+use clap::{CommandFactory, Parser, Subcommand};
 use rmcp::ServiceExt;
 use std::io;
 use tracing_subscriber::EnvFilter;
@@ -23,6 +23,8 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
+    /// Run as MCP stdio server
+    Mcp,
     /// Run the daemon (bridge between Chrome extension and MCP clients)
     Daemon,
     /// Ensure the daemon is running (start it if not, no-op if already running)
@@ -47,9 +49,9 @@ async fn main() -> Result<()> {
 
             daemon::run_daemon().await
         }
-        Some(Commands::EnsureDaemon) => daemon::ensure_daemon().await,
+        Some(Commands::EnsureDaemon) => daemon_daemon().await,
         Some(Commands::StopDaemon) => daemon::stop_daemon().await,
-        None => {
+        Some(Commands::Mcp) => {
             // MCP stdio server mode — logging MUST go to stderr
             tracing_subscriber::fmt()
                 .with_env_filter(
@@ -64,6 +66,10 @@ async fn main() -> Result<()> {
 
             service.waiting().await?;
 
+            Ok(())
+        }
+        None => {
+            Cli::command().print_help()?;
             Ok(())
         }
     }
