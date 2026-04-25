@@ -1,0 +1,41 @@
+# fetch-android-source 测试 URL
+#
+# 每行一个 URL，# 开头的行为注释
+# 可用于手动回归测试：
+# while IFS= read -r url; do [[ "$url" == \#* ]] || [[ -z "$url" ]] && continue; echo ">>> $url"; python3 scripts/fetch.py "$url"; echo; done < references/test_urls.txt
+
+# --- platform, 2-component repo (frameworks/base), with drc, line range ---
+https://cs.android.com/android/platform/superproject/main/+/main:frameworks/base/core/java/android/app/LoadedApk.java;l=1042-1046;drc=50f34b45baed2ec3a256f1c65df4865d72452768
+
+# --- platform, 2-component repo (frameworks/base), with drc, single line ---
+https://cs.android.com/android/platform/superproject/main/+/main:frameworks/base/core/java/android/app/ApplicationLoaders.java;l=126-129;drc=1a7ba99687f648729073492e3af503d57742fbcf
+
+# --- platform, 1-component repo (bionic), with drc, single line ---
+https://cs.android.com/android/platform/superproject/main/+/main:bionic/libc/bionic/mntent.cpp;l=39;drc=32bc0fcf69dfccb3726fe572833a38b01179580e
+
+# --- platform, 2-component repo (system/core), no drc, release tag ---
+https://cs.android.com/android/platform/superproject/+/android-12.0.0_r3:system/core/libcutils/include/private/android_filesystem_config.h;l=152
+
+# --- platform, 2-component repo (system/netd), no drc, release tag ---
+https://cs.android.com/android/platform/superproject/+/android-12.0.0_r3:system/netd/client/NetdClient.cpp;l=187
+
+# --- platform, 2-component repo (frameworks/av), with drc, large line range ---
+https://cs.android.com/android/platform/superproject/+/android-latest-release:frameworks/av/services/audiopolicy/service/AudioPolicyService.cpp;l=1111-1203;drc=277d3cc7a0bcb34146e142736321c99faaac0500
+
+# --- platform, 2-component repo (system/media), with drc, single line ---
+https://cs.android.com/android/platform/superproject/+/android-latest-release:system/media/audio/include/system/audio.h;l=67;drc=a94b3ce305d655aec8bce7864759802a1d7734d7
+
+# --- platform, 2-component repo (frameworks/native), with drc, single line ---
+https://cs.android.com/android/platform/superproject/+/android-latest-release:frameworks/native/libs/permission/aidl/android/content/AttributionSourceState.aidl;l=29;drc=0b0c1260b995b98347021ed272aef137f6f9ceac
+
+# --- kernel, repo=common, no drc, kernel branch ---
+https://cs.android.com/android/kernel/superproject/+/common-android12-5.10:common/net/socket.c;l=1490
+
+# --- kernel, repo=common, no drc, kernel branch, ipv4 subsystem ---
+https://cs.android.com/android/kernel/superproject/+/common-android12-5.10:common/net/ipv4/af_inet.c;l=388
+
+# --- platform, no line number, small file (should output entire file) ---
+https://cs.android.com/android/platform/superproject/main/+/main:bionic/libc/bionic/mntent.cpp;drc=32bc0fcf69dfccb3726fe572833a38b01179580e
+
+# --- platform, no line number, large file (should error) ---
+https://cs.android.com/android/platform/superproject/main/+/main:frameworks/base/core/java/android/app/LoadedApk.java;drc=50f34b45baed2ec3a256f1c65df4865d72452768
