@@ -123,7 +123,7 @@ impl BrowserPipeServer {
 #[tool_router]
 impl BrowserPipeServer {
     #[tool(
-        name = "piped-fetch",
+        name = "fetch",
         description = "Fetch a URL using the local Chrome browser's cookies and session. The request is forwarded through a Chrome extension, which automatically injects browser cookies for authentication. Set referrer to a page URL on the target origin for sites with partitioned cookies (CHIPS)."
     )]
     async fn fetch(
