@@ -111,13 +111,7 @@ class BrowserPipe {
     }
 
     async fetch(req) {
-        const cookies = await this.getCookies(req.url)
         const headers = new Headers(req.headers || {});
-
-        if (cookies) {
-            const existing = headers.get('Cookie')
-            headers.set('Cookie', existing ? `${cookies}; ${existing}` : cookies)
-        }
 
         const controller = new AbortController()
         const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
@@ -126,6 +120,7 @@ class BrowserPipe {
             const options = {
                 method: req.method || 'GET',
                 headers,
+                credentials: 'include',
                 signal: controller.signal,
                 redirect: req.redirect || 'follow'
             }
@@ -175,17 +170,6 @@ class BrowserPipe {
             throw err
         } finally {
             clearTimeout(timer)
-        }
-    }
-
-    async getCookies(url) {
-        try {
-            const cookies = await chrome.cookies.getAll({url});
-            if (cookies.length === 0) return '';
-            return cookies.map((c) => `${c.name}=${c.value}`).join("; ");
-        } catch (err) {
-            console.warn('[pipe] Failed to get cookies:', err);
-            return '';
         }
     }
 

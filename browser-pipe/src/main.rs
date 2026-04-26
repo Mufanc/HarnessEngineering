@@ -49,7 +49,7 @@ async fn main() -> Result<()> {
 
             daemon::run_daemon().await
         }
-        Some(Commands::EnsureDaemon) => daemon_daemon().await,
+        Some(Commands::EnsureDaemon) => daemon::ensure_daemon().await,
         Some(Commands::StopDaemon) => daemon::stop_daemon().await,
         Some(Commands::Mcp) => {
             // MCP stdio server mode — logging MUST go to stderr
