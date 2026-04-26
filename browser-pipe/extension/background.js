@@ -4,12 +4,27 @@ const RECONNECT_MAX_MS = 30000
 const RECONNECT_JITTER_MS = 1000
 const FETCH_TIMEOUT_MS = 30000
 const KEEPALIVE_ALARM_NAME = 'keepalive'
+const FRAME_READY_TIMEOUT_MS = 15000
 
 class BrowserPipe {
     constructor() {
         this.ws = null
         this.reconnectAttempt = 0
         this.reconnectTimer = null
+
+        // iframe fetch state
+        this.pendingFrameReady = {}
+        this.pendingResults = {}
+        this.registeredHosts = new Set()
+
+        chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+            if (msg.type === 'frame_ready') {
+                this.pendingFrameReady[msg.requestId] = sendResponse
+                return true // keep channel open for async sendResponse
+            } else if (msg.type === 'fetch_result' || msg.type === 'fetch_error') {
+                this.pendingResults[msg.requestId] = msg
+            }
+        })
     }
 
     start() {
@@ -90,7 +105,9 @@ class BrowserPipe {
 
         if (msg.type === 'fetch_request') {
             try {
-                const resp = await this.fetch(msg)
+                const resp = msg.referrer
+                    ? await this.fetchViaIframe(msg)
+                    : await this.fetch(msg)
                 this.send(resp)
             } catch (err) {
                 this.send({
@@ -109,6 +126,8 @@ class BrowserPipe {
             console.warn('[pipe] Cannot send message: WebSocket not open')
         }
     }
+
+    // ── Direct fetch (existing behavior) ──
 
     async fetch(req) {
         const headers = new Headers(req.headers || {});
@@ -172,6 +191,129 @@ class BrowserPipe {
             clearTimeout(timer)
         }
     }
+
+    // ── Iframe fetch (offscreen document + content script) ──
+
+    async ensureOffscreen() {
+        const contexts = await chrome.runtime.getContexts({
+            contextTypes: ['OFFSCREEN_DOCUMENT']
+        })
+        if (contexts.length > 0) return
+
+        await chrome.offscreen.createDocument({
+            url: 'offscreen.html',
+            reasons: ['IFRAME_SCRIPTING'],
+            justification: 'Fetch URLs with correct cookie partition via iframe'
+        })
+    }
+
+    async ensureContentScriptForHost(hostname) {
+        if (this.registeredHosts.has(hostname)) return
+
+        const scriptId = 'bpipe-' + hostname.replace(/[^a-zA-Z0-9]/g, '-')
+
+        const existing = await chrome.scripting.getRegisteredContentScripts({ ids: [scriptId] })
+        if (existing.length === 0) {
+            await chrome.scripting.registerContentScripts([{
+                id: scriptId,
+                matches: ['https://' + hostname + '/*', 'http://' + hostname + '/*'],
+                js: ['content.js'],
+                runAt: 'document_idle',
+                allFrames: true
+            }])
+        }
+
+        this.registeredHosts.add(hostname)
+    }
+
+    async fetchViaIframe(req) {
+        const cleanup = () => {
+            chrome.runtime.sendMessage({ action: 'remove_iframe', id: req.id })
+                .catch(() => {})
+            delete this.pendingFrameReady[req.id]
+            delete this.pendingResults[req.id]
+        }
+
+        try {
+            // 1. Ensure offscreen document exists
+            await this.ensureOffscreen()
+
+            // 2. Register content script for the target host
+            const hostname = new URL(req.referrer).hostname
+            await this.ensureContentScriptForHost(hostname)
+
+            // 3. Create iframe and wait for it to load
+            const iframeReady = await chrome.runtime.sendMessage({
+                action: 'create_iframe',
+                id: req.id,
+                url: req.referrer
+            })
+            if (!iframeReady?.ok) {
+                throw new Error(iframeReady?.error || 'Failed to create iframe')
+            }
+
+            // 4. Wait for content script to signal ready
+            const sendResponse = await this.pollPending(this.pendingFrameReady, req.id, FRAME_READY_TIMEOUT_MS)
+
+            // 5. Send fetch parameters to content script
+            sendResponse({
+                url: req.url,
+                method: req.method || 'GET',
+                headers: req.headers || {},
+                body: req.body || null,
+                redirect: req.redirect || 'follow'
+            })
+
+            // 6. Wait for fetch result
+            const result = await this.pollPending(this.pendingResults, req.id, FETCH_TIMEOUT_MS)
+
+            // 7. Cleanup iframe
+            cleanup()
+
+            // 8. Build response
+            if (result.type === 'fetch_error') {
+                return {
+                    id: req.id,
+                    type: 'fetch_error',
+                    error: result.error
+                }
+            }
+
+            return {
+                id: req.id,
+                type: 'fetch_response',
+                status: result.status,
+                statusText: result.statusText || '',
+                body: result.body || null,
+                bodyBase64: result.bodyBase64 || null,
+                redirected: result.redirected || false,
+                url: result.url || req.url
+            }
+        } catch (err) {
+            cleanup()
+            throw err
+        }
+    }
+
+    pollPending(map, key, timeout) {
+        return new Promise((resolve, reject) => {
+            const start = Date.now()
+            const interval = setInterval(() => {
+                if (map[key]) {
+                    clearInterval(interval)
+                    const value = map[key]
+                    delete map[key]
+                    resolve(value)
+                }
+                if (Date.now() - start > timeout) {
+                    clearInterval(interval)
+                    reject(new Error(`Timed out waiting for ${key}`))
+                }
+            }, 100)
+        })
+    }
+
+    // ── Utilities ──
 
     isTextContentType(contentType) {
         if (!contentType) return true;

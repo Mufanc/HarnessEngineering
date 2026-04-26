@@ -14,6 +14,8 @@ pub struct DaemonRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub body: Option<String>,
     pub redirect: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub referrer: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -65,6 +67,8 @@ pub struct ChromeRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub body: Option<String>,
     pub redirect: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub referrer: Option<String>,
 }
 
 impl From<DaemonRequest> for ChromeRequest {
@@ -77,6 +81,7 @@ impl From<DaemonRequest> for ChromeRequest {
             headers: req.headers,
             body: req.body,
             redirect: req.redirect,
+            referrer: req.referrer,
         }
     }
 }

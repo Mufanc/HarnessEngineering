@@ -399,6 +399,7 @@ async fn handle_http_fetch(
             !matches!(
                 name.as_str(),
                 "x-forwarded-url"
+                    | "x-referrer"
                     | "user-agent"
                     | "host"
                     | "content-length"
@@ -414,6 +415,12 @@ async fn handle_http_fetch(
                 .map(|value| (name.to_string(), value.to_string()))
         })
         .collect();
+
+    let referrer = req
+        .headers()
+        .get("x-referrer")
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_string());
 
     // Read body
     let body_bytes = match req.collect().await {
@@ -446,6 +453,7 @@ async fn handle_http_fetch(
         },
         body,
         redirect: "follow".to_string(),
+        referrer,
     };
 
     let resp = dispatch_request(&state, request).await;

@@ -35,6 +35,12 @@ pub struct FetchParams {
 
     /// Redirect behavior: "follow", "error", or "manual". Defaults to "follow".
     pub redirect: Option<String>,
+
+    /// A page URL on the target origin whose cookie/session context should be used for the fetch.
+    /// When set, the request is executed within that page's browsing context,
+    /// which is necessary for sites using partitioned cookies (CHIPS).
+    /// When absent, the fetch runs directly from the Service Worker.
+    pub referrer: Option<String>,
 }
 
 /// Result returned by the fetch tool
@@ -118,7 +124,7 @@ impl BrowserPipeServer {
 impl BrowserPipeServer {
     #[tool(
         name = "piped-fetch",
-        description = "Fetch a URL using the local Chrome browser's cookies and session. The request is forwarded through a Chrome extension, which automatically injects browser cookies for authentication."
+        description = "Fetch a URL using the local Chrome browser's cookies and session. The request is forwarded through a Chrome extension, which automatically injects browser cookies for authentication. Set referrer to a page URL on the target origin for sites with partitioned cookies (CHIPS)."
     )]
     async fn fetch(
         &self,
@@ -138,6 +144,7 @@ impl BrowserPipeServer {
             headers: params.headers,
             body: params.body,
             redirect: params.redirect.unwrap_or_else(|| "follow".to_string()),
+            referrer: params.referrer,
         };
 
         // Send request and read response

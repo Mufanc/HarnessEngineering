@@ -4,7 +4,9 @@
     "version": "0.1.0",
     "description": "Forward fetch requests from MCP server with browser cookies",
     "permissions": [
-        "alarms"
+        "alarms",
+        "offscreen",
+        "scripting"
     ],
     "host_permissions": [
         "<all_urls>"
